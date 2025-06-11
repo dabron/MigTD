@@ -53,6 +53,7 @@ pub fn runtime_main() {
         }
     }
 
+    info!("test 0\n");
     // Handle the migration request from VMM
     handle_pre_mig();
 }
@@ -112,9 +113,13 @@ fn handle_pre_mig() {
     #[cfg(not(any(feature = "vmcall-interrupt", feature = "vmcall-raw")))]
     const MAX_CONCURRENCY_REQUESTS: usize = 1;
 
+    info!("test 1\n");
+
+
     // Set by `wait_for_request` async task when getting new request from VMM.
     static PENDING_REQUEST: Mutex<Option<MigrationInformation>> = Mutex::new(None);
 
+    info!("test 2\n");
     async_runtime::add_task(async move {
         loop {
             poll_fn(|_cx| {
@@ -133,8 +138,19 @@ fn handle_pre_mig() {
         }
     });
 
+    info!("test 3\n");
+    migtd::driver::ticks::init_sys_tick();
+    let result = async_runtime::block_on(test_timeout());
+    match result {
+        Ok(x) => info!("success: {}\n", x),
+        Err(_) => info!("timeout!!!!!\n"),
+    }
+
+    // info!("result: {}\n", result);
+
     let mut queued = async_runtime::poll_tasks();
 
+    info!("test 4\n");
     loop {
         // The async task waiting for VMM response is always in the queue
         if queued < MAX_CONCURRENCY_REQUESTS + 1 {
@@ -164,6 +180,7 @@ fn handle_pre_mig() {
         queued = async_runtime::poll_tasks();
         sleep();
     }
+    info!("test 5\n");
 }
 
 fn sleep() {

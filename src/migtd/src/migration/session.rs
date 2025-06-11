@@ -398,6 +398,27 @@ pub fn report_status(status: u8, request_id: u64) -> Result<()> {
     Ok(())
 }
 
+pub async fn get_result() -> Result<usize> {
+    for _ in 0..0x800 {
+        log::info!(".");
+    }
+    Ok(42)
+}
+
+pub async fn test_timeout() -> Result<usize> {
+    use crate::driver::ticks::with_timeout;
+    use core::time::Duration;
+
+    log::info!("test_timeout\n");
+    const TIMEOUT: Duration = Duration::from_secs(5);
+
+    with_timeout(
+        TIMEOUT,
+        get_result(),
+    )
+    .await?
+}
+
 #[cfg(feature = "main")]
 pub async fn exchange_msk(info: &MigrationInformation) -> Result<()> {
     use crate::driver::ticks::with_timeout;

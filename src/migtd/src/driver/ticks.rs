@@ -18,9 +18,11 @@ pub fn init_sys_tick() {
     init_timer();
     set_timer_callback(timer_callback);
     schedule_timeout(INTERVAL);
+    log::info!("init_sys_tick\n");
 }
 
 fn timer_callback() {
+    log::info!("timer_callback\n");
     SYS_TICK
         .fetch_update(Ordering::SeqCst, Ordering::SeqCst, |v| v.checked_add(1))
         .unwrap();
@@ -39,6 +41,7 @@ pub async fn with_timeout<F: Future>(timeout: Duration, fut: F) -> Result<F::Out
     };
     pin_mut!(fut);
     let timeout_fut = Timer::after(timeout);
+    log::info!("timeout: expires_at={}, yielded_once={}\n", timeout_fut.expires_at, timeout_fut.yielded_once);
     match select(fut, timeout_fut).await {
         Either::Left((r, _)) => Ok(r),
         Either::Right(_) => Err(TimeoutError),
@@ -65,6 +68,7 @@ impl Unpin for Timer {}
 impl Future for Timer {
     type Output = ();
     fn poll(mut self: Pin<&mut Self>, _cx: &mut Context<'_>) -> Poll<Self::Output> {
+        log::info!("poll: expires_at={}, yielded_once={}", self.expires_at, self.yielded_once);
         if self.yielded_once && self.expires_at <= now() as u128 {
             Poll::Ready(())
         } else {

@@ -11,9 +11,14 @@ use td_payload::arch::idt::{register_interrupt_callback, InterruptCallback, Inte
 /// time out events
 static TIMEOUT_FLAG: AtomicBool = AtomicBool::new(false);
 static TIMEOUT_CALLBACK: Once<fn()> = Once::new();
+static TSC_DEADLINE_ENABLED: AtomicBool = AtomicBool::new(true);
 
 const TIMEOUT_VECTOR: u8 = 33;
 const CPUID_TSC_DEADLINE_BIT: u32 = 1 << 24;
+
+const APIC_TIMER_MODE_ONESHOT: u32 = 0;
+const APIC_TIMER_MODE_PERIODIC: u32 = 1;
+const APIC_TIMER_MODE_TSC_DEADLINE: u32 = 2;
 
 fn timer_handler(_stack: &mut InterruptStack) {
     TIMEOUT_CALLBACK
@@ -24,7 +29,7 @@ fn timer_handler(_stack: &mut InterruptStack) {
 pub fn init_timer() {
     let cpuid = unsafe { core::arch::x86_64::__cpuid_count(0x1, 0) };
     if cpuid.ecx & CPUID_TSC_DEADLINE_BIT == 0 {
-        panic!("Please enable TSC deadline mode for TD");
+        TSC_DEADLINE_ENABLED.store(false, Ordering::SeqCst);
     }
 
     set_timer_notification(TIMEOUT_VECTOR)
@@ -37,7 +42,11 @@ pub fn schedule_timeout(timeout: u32) -> Option<u64> {
     let deadline = (tsc_frequency / 1000) as u64 * timeout as u64;
 
     apic_timer_lvtt_setup(TIMEOUT_VECTOR);
-    one_shot_tsc_deadline_mode(deadline)
+    if TSC_DEADLINE_ENABLED.load(Ordering::SeqCst) {
+        one_shot_tsc_deadline_mode(deadline)
+    } else {
+        one_shot(deadline)
+    }
 }
 
 pub fn timeout() -> bool {
@@ -45,7 +54,11 @@ pub fn timeout() -> bool {
 }
 
 pub fn reset_timer() {
-    one_shot_tsc_deadline_mode_reset();
+    if TSC_DEADLINE_ENABLED.load(Ordering::SeqCst) {
+        one_shot_tsc_deadline_mode_reset();
+    } else {
+        one_shot_reset();
+    }
     TIMEOUT_FLAG.store(false, Ordering::SeqCst);
 }
 
@@ -54,7 +67,12 @@ fn set_lvtt(val: u32) {
 }
 
 fn apic_timer_lvtt_setup(vector: u8) {
-    let lvtt = (2 << 17) | (vector as u32);
+    let mode = if TSC_DEADLINE_ENABLED.load(Ordering::SeqCst) {
+        APIC_TIMER_MODE_TSC_DEADLINE
+    } else {
+        APIC_TIMER_MODE_ONESHOT
+    };
+    let lvtt = (mode << 17) | (vector as u32);
     set_lvtt(lvtt);
 }
 
